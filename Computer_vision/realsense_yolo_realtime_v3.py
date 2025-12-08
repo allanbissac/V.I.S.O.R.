@@ -1,10 +1,4 @@
-import os
-import sys
-
-# CRITICAL: Remove OpenCV's Qt plugin path to avoid conflicts with ROS2/system Qt
-os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
-os.environ.pop("QT_PLUGIN_PATH", None)
-os.environ["QT_QPA_PLATFORM"] = "xcb"
+#!/usr/bin/env python3
 
 import time
 import numpy as np
@@ -13,6 +7,17 @@ import pyrealsense2 as rs
 import open3d as o3d
 from ultralytics import YOLO
 
+import rclpy
+from rclpy.node import Node
+from geometry_msgs.msg import PoseStamped, TransformStamped
+from std_msgs.msg import Header
+from vision_msgs.msg import Detection3DArray, Detection3D, ObjectHypothesisWithPose
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import Point
+from custom_interfaces.srv import GetNearestObject  
+from std_srvs.srv import Trigger
+from geometry_msgs.msg import Pose
+# manipulator_topic_name
 # ---------------- USER CONFIG ----------------
 MODEL_PATH = "/home/student10/Robotics_Systems_Design_Project/rgbd_vision/best.pt"
 CONF_THRESH = 0.35
@@ -20,42 +25,16 @@ IMG_SIZE = 640
 DEPTH_PATCH = 5
 DISPLAY_FPS = True
 
-# Physical object dimensions (in meters)
-CUBE_SIZE = 0.05  # 5 cm cubes
-BIN_SIZE = 0.15   # 15 cm bins
-SIZE_TOLERANCE = 0.02  # ±2 cm tolerance for size matching
-
-# Size thresholds for classification
-BLOCK_MAX_SIZE = 0.068  # Maximum dimension for blocks (8cm with tolerance)
-BIN_MIN_SIZE = 0.14    # Minimum dimension for bins (12cm with tolerance)
-
-# Color mapping for visualization (BGR format)
-CLASS_COLORS = {
-    'blue bin': (255, 100, 0),
-    'blue cube': (255, 0, 0),
-    'green bin': (100, 255, 0),
-    'green cube': (0, 255, 0),
-    'red bin': (0, 100, 255),
-    'red cube': (0, 0, 255),
-    'purple bin': (255, 100, 255),
-    'purple cube': (255, 0, 255),
-    'yellow bin': (100, 255, 255),
-    'yellow cube': (0, 255, 255),
-}
-
-EXPECTED_SIZES = {
-    'cube': CUBE_SIZE,
-    'bin': BIN_SIZE
-}
+BLOCK_MAX_SIZE = 0.06
+BIN_MIN_SIZE = 0.145
+PIXEL_AREA_THRESHOLD = 15000
 # ---------------------------------------------
 
 def get_intrinsics(profile):
-    """Extract camera intrinsics from RealSense profile."""
     video_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
     return video_profile.get_intrinsics()
 
 def median_depth_in_bbox(depth_frame, cx, cy, patch=5):
-    """Get median depth in a patch around the center point."""
     half = patch // 2
     depths = []
     for dx in range(-half, half+1):
@@ -69,13 +48,11 @@ def median_depth_in_bbox(depth_frame, cx, cy, patch=5):
     return np.median(depths) if len(depths) else float('nan')
 
 def pixel_to_point(intrinsics, px, py, depth_m):
-    """Convert 2D pixel + depth to 3D point in camera coordinates."""
     if np.isnan(depth_m) or depth_m <= 0:
         return (np.nan, np.nan, np.nan)
     return rs.rs2_deproject_pixel_to_point(intrinsics, [float(px), float(py)], float(depth_m))
 
 def rs_frames_to_open3d(color_frame, depth_frame, intr):
-    """Convert RealSense frames to Open3D point cloud."""
     depth_image = o3d.geometry.Image(np.asanyarray(depth_frame.get_data()))
     color_image = o3d.geometry.Image(np.asanyarray(color_frame.get_data()))
 
@@ -83,7 +60,7 @@ def rs_frames_to_open3d(color_frame, depth_frame, intr):
         color_image,
         depth_image,
         depth_scale=1.0 / depth_frame.get_units(),  
-        depth_trunc=3.0,
+        depth_trunc=2.0,
         convert_rgb_to_intensity=False
     )
 
@@ -96,178 +73,222 @@ def rs_frames_to_open3d(color_frame, depth_frame, intr):
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, intrinsic)
     return pcd
 
-def extract_object_point_cloud(pcd, x1, y1, x2, y2, intr, depth_frame):
-    """
-    Extract point cloud for a specific bounding box region.
-    """
-    if not pcd.has_points() or len(pcd.points) == 0:
-        return None
+def segment_objects_from_pcd(pcd):
+    if not pcd.has_points() or len(pcd.points) < 10:
+        return []
     
-    # Get depth values within bbox
-    depths = []
-    for y in range(y1, y2, max(1, (y2-y1)//10)):
-        for x in range(x1, x2, max(1, (x2-x1)//10)):
-            try:
-                d = depth_frame.get_distance(x, y)
-                if d > 0:
-                    depths.append(d)
-            except:
-                pass
+    pcd_down = pcd.voxel_down_sample(voxel_size=0.005)
     
-    if len(depths) == 0:
-        return None
-    
-    # Get median depth for the object
-    median_depth = np.median(depths)
-    depth_threshold = 0.05  # 5cm threshold
-    
-    points = np.asarray(pcd.points)
-    colors = np.asarray(pcd.colors)
-    
-    valid_indices = []
-    for i, point in enumerate(points):
-        if point[2] <= 0:
-            continue
-        
-        # Check if point is at similar depth
-        if abs(point[2] - median_depth) > depth_threshold:
-            continue
-        
-        # Project to 2D
-        try:
-            pixel = rs.rs2_project_point_to_pixel(
-                [intr.fx, intr.fy, intr.ppx, intr.ppy, 0],
-                point.tolist()
-            )
-            
-            if x1 <= pixel[0] <= x2 and y1 <= pixel[1] <= y2:
-                valid_indices.append(i)
-        except:
-            continue
-    
-    if len(valid_indices) == 0:
-        return None
-    
-    object_pcd = pcd.select_by_index(valid_indices)
-    return object_pcd
-
-def get_object_dimensions(object_pcd):
-    """
-    Calculate real-world dimensions of an object from its point cloud.
-    Returns dict with size measurements.
-    """
-    if object_pcd is None or not object_pcd.has_points() or len(object_pcd.points) < 10:
-        return None
+    if len(pcd_down.points) < 3:
+        return []
     
     try:
-        # Get oriented bounding box (better for rotated objects)
-        obb = object_pcd.get_oriented_bounding_box()
-        obb_size = obb.extent  # [width, height, depth]
+        plane_model, inliers = pcd_down.segment_plane(
+            distance_threshold=0.01,
+            ransac_n=3,
+            num_iterations=400
+        )
         
-        # Get axis-aligned bounding box
-        aabb = object_pcd.get_axis_aligned_bounding_box()
-        aabb_size = aabb.get_extent()
+        if len(inliers) < 100:
+            objects = pcd_down
+        else:
+            objects = pcd_down.select_by_index(inliers, invert=True)
         
-        # Use OBB for size (more accurate for rotated objects)
-        sorted_dims = np.sort(obb_size)  # Sort dimensions
+        if not objects.has_points() or len(objects.points) < 10:
+            return []
         
-        return {
-            'obb_size': obb_size,
-            'aabb_size': aabb_size,
-            'center': np.asarray(obb.center),
-            'max_dim': sorted_dims[2],  # Largest dimension
-            'mid_dim': sorted_dims[1],  # Middle dimension
-            'min_dim': sorted_dims[0],  # Smallest dimension
-            'volume': obb_size[0] * obb_size[1] * obb_size[2],
-            'num_points': len(object_pcd.points)
-        }
-    except Exception as e:
-        print(f"Error computing dimensions: {e}")
-        return None
+        labels = np.array(objects.cluster_dbscan(eps=0.02, min_points=50))
+        num_clusters = labels.max() + 1
+        
+        if num_clusters <= 0:
+            return []
+        
+        clusters = []
+        for i in range(num_clusters):
+            idx = np.where(labels == i)[0]
+            if len(idx) > 0:
+                clusters.append(objects.select_by_index(idx))
+        
+        return clusters
+        
+    except RuntimeError as e:
+        print(f"Error during segmentation: {e}")
+        return []
 
-def verify_object_type(cls_name, dimensions):
-    """
-    Verify if detected object type matches its measured size.
-    Returns: (is_valid, object_type, size_error)
-    """
-    if dimensions is None:
-        return False, "unknown", float('inf')
-    
-    max_dim = dimensions['max_dim']
-    
-    # Determine if it's a cube or bin from class name
-    if 'cube' in cls_name.lower():
-        expected_type = 'cube'
-        expected_size = CUBE_SIZE
-    elif 'bin' in cls_name.lower():
-        expected_type = 'bin'
-        expected_size = BIN_SIZE
-    else:
-        return False, "unknown", float('inf')
-    
-    # Calculate size error
-    size_error = abs(max_dim - expected_size)
-    
-    # Check if size matches expectation
-    is_valid = size_error <= SIZE_TOLERANCE
-    
-    # Additional check: cubes should be < BLOCK_MAX_SIZE, bins should be > BIN_MIN_SIZE
-    if expected_type == 'cube':
-        is_valid = is_valid and (max_dim <= BLOCK_MAX_SIZE)
-    elif expected_type == 'bin':
-        is_valid = is_valid and (max_dim >= BIN_MIN_SIZE)
-    
-    return is_valid, expected_type, size_error
+def match_yolo_to_clusters(cx, cy, depth_m, intr, clusters):
+    yolo_X, yolo_Y, yolo_Z = pixel_to_point(intr, cx, cy, depth_m)
+    if np.isnan(yolo_Z):
+        return None, None
 
-def match_blocks_to_bins(detections_with_info):
-    """
-    Match cubes to their corresponding colored bins.
-    Returns list of (cube, target_bin) pairs.
-    """
-    cubes = []
-    bins = []
-    
-    # Separate cubes and bins (only include verified objects)
-    for det in detections_with_info:
-        if not det['size_verified']:
+    det_point = np.array([yolo_X, yolo_Y, yolo_Z])
+    min_dist = 999
+    min_cluster = None
+
+    for i, cluster in enumerate(clusters):
+        if len(cluster.points) == 0:
             continue
-            
-        cls_name = det['class'].lower()
-        if 'cube' in cls_name:
-            cubes.append(det)
-        elif 'bin' in cls_name:
-            bins.append(det)
-    
-    matches = []
-    for cube in cubes:
-        # Extract color from class name (e.g., 'blue cube' -> 'blue')
-        cube_color = cube['class'].lower().split()[0]
-        
-        # Find matching bin with same color
-        for bin_det in bins:
-            bin_color = bin_det['class'].lower().split()[0]
-            if cube_color == bin_color:
-                distance_3d = np.linalg.norm(
-                    np.array(cube['position_3d']) - np.array(bin_det['position_3d'])
-                )
-                matches.append({
-                    'cube': cube,
-                    'target_bin': bin_det,
-                    'color': cube_color,
-                    'distance': distance_3d
-                })
-                break
-    
-    return matches
+        obb = cluster.get_oriented_bounding_box()
+        center = np.array(obb.center)
+        dist = np.linalg.norm(center - det_point)
+        if dist < min_dist:
+            min_dist = dist
+            min_cluster = i
 
-def main():
+    return min_cluster, min_dist
+
+
+class RGBDVisionNode(Node):
+    def __init__(self):
+        super().__init__('rgbd_vision_node')
+        
+        # Publishers
+        self.detection_pub = self.create_publisher(
+            Detection3DArray, 
+            '/object_detections_3d', 
+            10
+        )
+        
+        # TF broadcaster for camera frame
+        self.tf_broadcaster = TransformBroadcaster(self)
+        
+        # Store latest detections for service calls
+        self.latest_detections = []
+        self.detection_lock = False
+        
+        # Service to get nearest object
+        self.nearest_obj_srv = self.create_service(
+            Trigger,  # Using standard service, returns success and message
+            'get_nearest_object',
+            self.get_nearest_object_callback
+        )
+        
+        # Publisher for nearest object (alternative to service)
+        self.nearest_pub = self.create_publisher(
+            PoseStamped,
+            '/nearest_object_pose',
+            10
+        )
+        
+        self.get_logger().info('RGB-D Vision Node initialized')
+        self.get_logger().info('Services: /get_nearest_object')
+        self.get_logger().info('Topics: /object_detections_3d, /nearest_object_pose')
+
+    def broadcast_camera_transform(self):
+        """
+        Broadcast the transform from robot base to camera.
+        You'll need to measure and set these values based on your robot setup.
+        """
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'base_link'  # or your robot's base frame
+        t.child_frame_id = 'camera_link'
+        
+        # TODO: Set these based on your actual camera mounting position
+        t.transform.translation.x = 0.0  # meters forward from base
+        t.transform.translation.y = 0.0  # meters left from base
+        t.transform.translation.z = 0.5  # meters up from base
+        
+        # Camera orientation (assuming camera points forward)
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+        t.transform.rotation.w = 1.0
+        
+        self.tf_broadcaster.sendTransform(t)
+
+    def get_nearest_object_callback(self, request, response):
+        """
+        Service callback to get the nearest detected object.
+        Returns pose information as a string in the response.
+        """
+        if len(self.latest_detections) == 0:
+            response.success = False
+            response.message = "No objects detected"
+            return response
+        
+        # Find nearest object (minimum Z distance in camera frame)
+        nearest = min(self.latest_detections, key=lambda d: d[2][2])  # Sort by Z coordinate
+        cls_name, conf, center, size = nearest
+        
+        # Calculate distance from camera
+        distance = np.linalg.norm(center)
+        
+        response.success = True
+        response.message = (
+            f"class:{cls_name},"
+            f"confidence:{conf:.2f},"
+            f"x:{center[0]:.3f},"
+            f"y:{center[1]:.3f},"
+            f"z:{center[2]:.3f},"
+            f"distance:{distance:.3f},"
+            f"size_x:{size[0]:.3f},"
+            f"size_y:{size[1]:.3f},"
+            f"size_z:{size[2]:.3f}"
+        )
+        
+        # Also publish as PoseStamped for easy visualization
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+        pose_msg.header.frame_id = 'camera_link'
+        pose_msg.pose.position.x = float(center[0])
+        pose_msg.pose.position.y = float(center[1])
+        pose_msg.pose.position.z = float(center[2])
+        self.nearest_pub.publish(pose_msg)
+        
+        self.get_logger().info(f'Nearest object: {cls_name} at distance {distance:.3f}m')
+        
+        return response
+
+    def publish_detections(self, detections_data):
+        """
+        Store and publish 3D detections.
+        detections_data: list of tuples (cls_name, conf, center_xyz, size_xyz)
+        """
+        # Store for service calls
+        self.latest_detections = detections_data
+        
+        # Broadcast camera transform
+        self.broadcast_camera_transform()
+        
+        # Create Detection3DArray message
+        det_array = Detection3DArray()
+        det_array.header = Header()
+        det_array.header.stamp = self.get_clock().now().to_msg()
+        det_array.header.frame_id = 'camera_link'
+        
+        for (cls_name, conf, center, size) in detections_data:
+            detection = Detection3D()
+            
+            hypothesis = ObjectHypothesisWithPose()
+            hypothesis.hypothesis.class_id = cls_name
+            hypothesis.hypothesis.score = conf
+            
+            hypothesis.pose.pose.position.x = float(center[0])
+            hypothesis.pose.pose.position.y = float(center[1])
+            hypothesis.pose.pose.position.z = float(center[2])
+            
+            detection.results.append(hypothesis)
+            
+            detection.bbox.center.position.x = float(center[0])
+            detection.bbox.center.position.y = float(center[1])
+            detection.bbox.center.position.z = float(center[2])
+            detection.bbox.size.x = float(size[0])
+            detection.bbox.size.y = float(size[1])
+            detection.bbox.size.z = float(size[2])
+            
+            det_array.detections.append(detection)
+        
+        self.detection_pub.publish(det_array)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    
+    node = RGBDVisionNode()
+    
     print(f"Loading YOLO model: {MODEL_PATH}")
     model = YOLO(MODEL_PATH)
-    print(f"Model classes: {model.names}")
-    print(f"\nExpected sizes: Cubes={CUBE_SIZE*100:.1f}cm, Bins={BIN_SIZE*100:.1f}cm")
-    print(f"Size tolerance: ±{SIZE_TOLERANCE*100:.1f}cm")
 
-    # Initialize RealSense
     pipeline = rs.pipeline()
     cfg = rs.config()
     WIDTH, HEIGHT, FPS = 640, 480, 30
@@ -283,9 +304,9 @@ def main():
     frame_count = 0
 
     try:
-        print("\nStarting detection loop... Press 'q' to quit\n" + "-"*80)
-        
-        while True:
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0)
+            
             frames = pipeline.wait_for_frames()
             frames = align.process(frames)
 
@@ -297,7 +318,6 @@ def main():
 
             color_img = np.asanyarray(color_frame.get_data())
 
-            # ---- YOLO Detection ----
             results = model.predict(
                 source=color_img,
                 imgsz=IMG_SIZE,
@@ -306,7 +326,7 @@ def main():
             )
 
             detections = []
-            if len(results) and results[0].boxes is not None and len(results[0].boxes) > 0:
+            if len(results):
                 for box in results[0].boxes:
                     xyxy = box.xyxy.cpu().numpy()[0]
                     conf = float(box.conf.cpu().numpy()[0])
@@ -315,113 +335,51 @@ def main():
                     x1, y1, x2, y2 = map(int, xyxy)
                     detections.append((x1, y1, x2, y2, conf, cls_name))
 
-            # ---- Create Point Cloud ----
             pcd = rs_frames_to_open3d(color_frame, depth_frame, intr)
+            clusters = segment_objects_from_pcd(pcd)
 
-            # ---- Process Detections ----
-            detections_with_info = []
-            valid_count = 0
-            invalid_count = 0
-            
+            detections_for_ros = []
+
             for (x1, y1, x2, y2, conf, cls_name) in detections:
                 cx, cy = (x1+x2)//2, (y1+y2)//2
-                
-                # Get depth
                 depth_m = median_depth_in_bbox(depth_frame, cx, cy, patch=DEPTH_PATCH)
-                X, Y, Z = pixel_to_point(intr, cx, cy, depth_m)
+
+                text_extra = ""
+                center = None
+                size = None
                 
-                # Extract object point cloud
-                object_pcd = extract_object_point_cloud(pcd, x1, y1, x2, y2, intr, depth_frame)
-                
-                # Get dimensions
-                dimensions = get_object_dimensions(object_pcd)
-                
-                # Verify size matches expected type
-                is_valid, obj_type, size_error = verify_object_type(cls_name, dimensions)
-                
-                if is_valid:
-                    valid_count += 1
-                else:
-                    invalid_count += 1
-                
-                # Store detection info
-                detection_info = {
-                    'class': cls_name,
-                    'confidence': conf,
-                    'bbox': (x1, y1, x2, y2),
-                    'center_2d': (cx, cy),
-                    'position_3d': (X, Y, Z),
-                    'depth': depth_m,
-                    'dimensions': dimensions,
-                    'size_verified': is_valid,
-                    'object_type': obj_type,
-                    'size_error': size_error,
-                    'point_cloud': object_pcd
-                }
-                detections_with_info.append(detection_info)
-                
-                # Choose color
-                color = CLASS_COLORS.get(cls_name, (255, 255, 0))
-                
-                # Use different color for invalid size detections
-                if not is_valid:
-                    color = (128, 128, 128)  # Gray for invalid
-                
-                # Build label
-                label_parts = [cls_name, f"{conf:.2f}"]
-                
-                if not np.isnan(Z) and Z > 0:
-                    label_parts.append(f"D:{Z:.3f}m")
-                
-                if dimensions is not None:
-                    max_dim_cm = dimensions['max_dim'] * 100
-                    label_parts.append(f"[{max_dim_cm:.1f}cm]")
+                if len(clusters) > 0:
+                    cluster_idx, dist = match_yolo_to_clusters(cx, cy, depth_m, intr, clusters)
                     
-                    # Add verification status
-                    if is_valid:
-                        label_parts.append("✓")
-                    else:
-                        label_parts.append(f"✗ err:{size_error*100:.1f}cm")
-                
-                label = " ".join(label_parts)
-                
-                # Draw bounding box (thicker for valid detections)
-                thickness = 3 if is_valid else 1
-                cv2.rectangle(color_img, (x1, y1), (x2, y2), color, thickness)
-                
-                # Draw label with background
-                (label_w, label_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                cv2.rectangle(color_img, (x1, y1-label_h-10), (x1+label_w, y1), color, -1)
-                cv2.putText(color_img, label, (x1, y1-5),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                
-                # Draw center point
-                cv2.circle(color_img, (cx, cy), 4, color, -1)
+                    if cluster_idx is not None:
+                        cluster = clusters[cluster_idx]
+                        obb = cluster.get_oriented_bounding_box()
+                        center = np.array(obb.center)
+                        size = np.array(obb.extent)
+                        
+                        # Calculate distance from camera
+                        distance = np.linalg.norm(center)
+                        text_extra = f" D:{distance:.2f}m XYZ:({center[0]:.2f},{center[1]:.2f},{center[2]:.2f})"
+                        
+                        detections_for_ros.append((cls_name, conf, center, size))
+                else:
+                    if not np.isnan(depth_m) and depth_m > 0:
+                        X, Y, Z = pixel_to_point(intr, cx, cy, depth_m)
+                        center = np.array([X, Y, Z])
+                        size = np.array([0.05, 0.05, 0.05])
+                        distance = np.sqrt(X**2 + Y**2 + Z**2)
+                        text_extra = f" D:{distance:.2f}m ({X:.2f},{Y:.2f},{Z:.2f})"
+                        
+                        detections_for_ros.append((cls_name, conf, center, size))
 
-            # ---- Match Cubes to Bins ----
-            matches = match_blocks_to_bins(detections_with_info)
-            
-            # Print matches
-            if matches and frame_count % 30 == 0:  # Print every 30 frames
-                print(f"\n[Frame {frame_count}] Found {len(matches)} verified cube-bin matches:")
-                for match in matches:
-                    cube_size = match['cube']['dimensions']['max_dim'] * 100
-                    bin_size = match['target_bin']['dimensions']['max_dim'] * 100
-                    print(f"  {match['color'].upper()}: "
-                          f"Cube({cube_size:.1f}cm)@({match['cube']['position_3d'][2]:.2f}m) -> "
-                          f"Bin({bin_size:.1f}cm)@({match['target_bin']['position_3d'][2]:.2f}m) "
-                          f"[dist: {match['distance']:.3f}m]")
+                label = f"{cls_name} {conf:.2f}{text_extra}"
+                cv2.rectangle(color_img, (x1,y1), (x2,y2), (255,255,0), 2)
+                cv2.putText(color_img, label, (x1, y1-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
 
-            # ---- Display Statistics ----
-            stats_y = 20
-            cv2.putText(color_img, f"Total: {len(detections)} | Valid: {valid_count} | Invalid: {invalid_count}", 
-                       (10, stats_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
-            stats_y += 25
-            cv2.putText(color_img, f"Matches: {len(matches)}", (10, stats_y),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            if len(detections_for_ros) > 0:
+                node.publish_detections(detections_for_ros)
 
-            # FPS
             frame_count += 1
             if DISPLAY_FPS:
                 now = time.time()
@@ -429,11 +387,10 @@ def main():
                     fps = frame_count / (now - prev_time)
                     prev_time = now
                     frame_count = 0
-                stats_y += 25
-                cv2.putText(color_img, f"FPS: {fps:.1f}", (10, stats_y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    cv2.putText(color_img, f"FPS: {fps:.1f}", (10,20),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-            cv2.imshow("Block-Bin Detection System", color_img)
+            cv2.imshow("YOLO + Open3D RGB-D Pipeline", color_img)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -441,7 +398,8 @@ def main():
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()
-        print("\nShutdown complete.")
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == "__main__":
     main()
