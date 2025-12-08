@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 10
+names: ['blue bin', 'blue cube', 'green bin', 'green cube', 'purple bin', 'purple cube', 'red bin', 'red cube', 'yellow bin', 'yellow cube']
+
+roboflow:
+  workspace: leoroverproject
+  project: blockclassifier-ez7sn
+  version: 6
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/leoroverproject/blockclassifier-ez7sn/dataset/6
