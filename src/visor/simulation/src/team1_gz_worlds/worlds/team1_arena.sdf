@@ -1,0 +1,362 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="team1_arena">
+
+    <!-- Core Gazebo Sim systems (recommended) -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+
+    <!-- Physics tuning (safe defaults) -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Lighting -->
+    <light name="sun" type="directional">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>1 1 1 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.2 -1</direction>
+      <cast_shadows>true</cast_shadows>
+    </light>
+
+    <!-- Ground plane (no external model dependencies) -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>12 12</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>12 12</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.25 0.25 0.25 1</ambient>
+            <diffuse>0.35 0.35 0.35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Arena boundary walls: 6m x 6m (bigger), positioned so (0,0) is near the bottom-left corner
+        Corner is roughly at (-0.6, -0.6), giving the rover some clearance at spawn. -->
+    <model name="arena_walls">
+      <static>true</static>
+      <link name="walls">
+
+        <!-- Wall parameters -->
+        <!-- length=6.0, thickness=0.10, height=0.5 -->
+        <!-- Lower wall center y=-0.6, upper wall center y=5.4 -->
+        <!-- Left wall center x=-0.6, right wall center x=5.4 -->
+        <!-- Center of arena is at (2.4, 2.4) -->
+
+        <!-- Bottom (-Y) wall -->
+        <collision name="wall_bottom_col">
+          <pose>2.4 -0.6 0.25 0 0 0</pose>
+          <geometry><box><size>6.0 0.10 0.5</size></box></geometry>
+        </collision>
+        <visual name="wall_bottom_vis">
+          <pose>2.4 -0.6 0.25 0 0 0</pose>
+          <geometry><box><size>6.0 0.10 0.5</size></box></geometry>
+          <material><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+
+        <!-- Top (+Y) wall -->
+        <collision name="wall_top_col">
+          <pose>2.4 5.4 0.25 0 0 0</pose>
+          <geometry><box><size>6.0 0.10 0.5</size></box></geometry>
+        </collision>
+        <visual name="wall_top_vis">
+          <pose>2.4 5.4 0.25 0 0 0</pose>
+          <geometry><box><size>6.0 0.10 0.5</size></box></geometry>
+          <material><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+
+        <!-- Left (-X) wall -->
+        <collision name="wall_left_col">
+          <pose>-0.6 2.4 0.25 0 0 0</pose>
+          <geometry><box><size>0.10 6.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="wall_left_vis">
+          <pose>-0.6 2.4 0.25 0 0 0</pose>
+          <geometry><box><size>0.10 6.0 0.5</size></box></geometry>
+          <material><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+
+        <!-- Right (+X) wall -->
+        <collision name="wall_right_col">
+          <pose>5.4 2.4 0.25 0 0 0</pose>
+          <geometry><box><size>0.10 6.0 0.5</size></box></geometry>
+        </collision>
+        <visual name="wall_right_vis">
+          <pose>5.4 2.4 0.25 0 0 0</pose>
+          <geometry><box><size>0.10 6.0 0.5</size></box></geometry>
+          <material><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+
+      </link>
+    </model>
+
+
+    <!-- Helper: a simple open-top bin built from 5 boxes -->
+    <!-- bin footprint 0.35 x 0.35, wall thickness 0.02, wall height 0.30 -->
+    <!-- RED bin -->
+    <model name="bin_red">
+      <static>true</static>
+      <pose>-0.35 0.5 0 0 0 0</pose>
+      <link name="link">
+        <!-- base -->
+        <collision name="base_col">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.35 0.35 0.02</size></box></geometry>
+        </collision>
+        <visual name="base_vis">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>0.35 0.35 0.02</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+
+        <!-- walls -->
+        <collision name="w1_col">
+          <pose>0 0.165 0.07 0 0 0</pose>
+          <geometry><box><size>0.35 0.02 0.30</size></box></geometry>
+        </collision>
+        <visual name="w1_vis">
+          <pose>0 0.165 0.07 0 0 0</pose>
+          <geometry><box><size>0.35 0.02 0.30</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+
+        <collision name="w2_col">
+          <pose>0 -0.165 0.07 0 0 0</pose>
+          <geometry><box><size>0.35 0.02 0.30</size></box></geometry>
+        </collision>
+        <visual name="w2_vis">
+          <pose>0 -0.165 0.07 0 0 0</pose>
+          <geometry><box><size>0.35 0.02 0.30</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+
+        <collision name="w3_col">
+          <pose>0.165 0 0.07 0 0 0</pose>
+          <geometry><box><size>0.02 0.35 0.30</size></box></geometry>
+        </collision>
+        <visual name="w3_vis">
+          <pose>0.165 0 0.07 0 0 0</pose>
+          <geometry><box><size>0.02 0.35 0.30</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+
+        <collision name="w4_col">
+          <pose>-0.165 0 0.07 0 0 0</pose>
+          <geometry><box><size>0.02 0.35 0.30</size></box></geometry>
+        </collision>
+        <visual name="w4_vis">
+          <pose>-0.165 0 0.07 0 0 0</pose>
+          <geometry><box><size>0.02 0.35 0.30</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- GREEN bin -->
+    <model name="bin_green">
+      <static>true</static>
+      <pose>-0.35 1.0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="base_col"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry></collision>
+        <visual name="base_vis"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry><material><diffuse>0.1 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w1_col"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w1_vis"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.1 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w2_col"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w2_vis"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.1 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w3_col"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w3_vis"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.1 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w4_col"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w4_vis"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.1 0.9 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- BLUE bin -->
+    <model name="bin_blue">
+      <static>true</static>
+      <pose>-0.35 1.5 0 0 0 0</pose>
+      <link name="link">
+        <collision name="base_col"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry></collision>
+        <visual name="base_vis"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry><material><diffuse>0.1 0.1 0.9 1</diffuse></material></visual>
+        <collision name="w1_col"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w1_vis"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.1 0.1 0.9 1</diffuse></material></visual>
+        <collision name="w2_col"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w2_vis"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.1 0.1 0.9 1</diffuse></material></visual>
+        <collision name="w3_col"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w3_vis"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.1 0.1 0.9 1</diffuse></material></visual>
+        <collision name="w4_col"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w4_vis"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.1 0.1 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- YELLOW bin -->
+    <model name="bin_yellow">
+      <static>true</static>
+      <pose>-0.35 2.0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="base_col"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry></collision>
+        <visual name="base_vis"><pose>0 0 0.01 0 0 0</pose><geometry><box><size>0.35 0.35 0.02</size></box></geometry><material><diffuse>0.9 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w1_col"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w1_vis"><pose>0 0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.9 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w2_col"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry></collision>
+        <visual name="w2_vis"><pose>0 -0.165 0.07 0 0 0</pose><geometry><box><size>0.35 0.02 0.30</size></box></geometry><material><diffuse>0.9 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w3_col"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w3_vis"><pose>0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.9 0.9 0.1 1</diffuse></material></visual>
+        <collision name="w4_col"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry></collision>
+        <visual name="w4_vis"><pose>-0.165 0 0.07 0 0 0</pose><geometry><box><size>0.02 0.35 0.30</size></box></geometry><material><diffuse>0.9 0.9 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- A few coloured cubes to pick up (dynamic) -->
+    <!-- You can copy/paste more and change pose/colour -->
+    <model name="obj_red_1">
+      <static>false</static>
+      <pose>4.1 4.6 0.276 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.00002</ixx><iyy>0.00002</iyy><izz>0.00002</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="col">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+          <material><diffuse>0.9 0.1 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="obj_green_1">
+      <static>false</static>
+      <pose>4.0 4.6 0.276 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.00002</ixx><iyy>0.00002</iyy><izz>0.00002</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="col"><geometry><box><size>0.05 0.05 0.05</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+          <material><diffuse>0.1 0.9 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="obj_blue_1">
+      <static>false</static>
+      <pose>3.9 4.6 0.276 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.00002</ixx><iyy>0.00002</iyy><izz>0.00002</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="col"><geometry><box><size>0.05 0.05 0.05</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+          <material><diffuse>0.1 0.1 0.9 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="obj_yellow_1">
+      <static>false</static>
+      <pose>4.2 4.6 0.276 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia>
+            <ixx>0.00002</ixx><iyy>0.00002</iyy><izz>0.00002</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <collision name="col"><geometry><box><size>0.05 0.05 0.05</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.05 0.05 0.05</size></box></geometry>
+          <material><diffuse>0.9 0.9 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Maze-like obstacles: same height as walls (0.5), same colour as walls -->
+    <!-- Each is a static box placed to create corridors -->
+    <model name="maze_obstacles">
+      <static>true</static>
+      <link name="link">
+
+        <!-- Helper: z=0.25 makes a 0.5m-high box sit on the ground -->
+
+        <!-- Long horizontal blocks -->
+        <collision name="o1_col"><pose>1.8 1.0 0.25 0 0 0</pose><geometry><box><size>1.6 0.10 0.5</size></box></geometry></collision>
+        <visual    name="o1_vis"><pose>1.8 1.0 0.25 0 0 0</pose><geometry><box><size>1.6 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <!-- <collision name="o2_col"><pose>3.8 2.1 0.25 0 0 0</pose><geometry><box><size>1.8 0.10 0.5</size></box></geometry></collision>
+        <visual    name="o2_vis"><pose>3.8 2.1 0.25 0 0 0</pose><geometry><box><size>1.8 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual> -->
+
+        <collision name="o3_col"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry></collision>
+        <visual    name="o3_vis"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <!-- Vertical blocks -->
+        <collision name="o4_col"><pose>1.2 2.0 0.25 0 0 0</pose><geometry><box><size>0.10 1.6 0.5</size></box></geometry></collision>
+        <visual    name="o4_vis"><pose>1.2 2.0 0.25 0 0 0</pose><geometry><box><size>0.10 1.6 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <collision name="o5_col"><pose>2.4 4.1 0.25 0 0 0</pose><geometry><box><size>0.10 1.7 0.5</size></box></geometry></collision>
+        <visual    name="o5_vis"><pose>2.4 4.1 0.25 0 0 0</pose><geometry><box><size>0.10 1.7 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <collision name="o6_col"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry></collision>
+        <visual    name="o6_vis"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <!-- A few chunky blocks (to make it “maze-ish”) -->
+        <collision name="o7_col"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry></collision>
+        <visual    name="o7_vis"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <collision name="o8_col"><pose>0.9 3.7 0.25 0 0 0</pose><geometry><box><size>0.45 0.25 0.5</size></box></geometry></collision>
+        <visual    name="o8_vis"><pose>0.9 3.7 0.25 0 0 0</pose><geometry><box><size>0.45 0.25 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+        <collision name="o9_col"><pose>4.1 4.6 0.125 0 0 0</pose><geometry><box><size>0.50 0.30 0.25</size></box></geometry></collision>
+        <visual    name="o9_vis"><pose>4.1 4.6 0.125 0 0 0</pose><geometry><box><size>0.50 0.30 0.25</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+
+      </link>
+    </model>
+
+
+  </world>
+</sdf>

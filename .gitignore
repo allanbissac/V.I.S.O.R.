@@ -12,6 +12,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+install/
 
 # IDEs and editors
 .vscode/
@@ -20,6 +21,7 @@ dist/
 
 # Logs and databases
 *.log
+log/
 
 # OS files
 .DS_Store
