@@ -331,9 +331,12 @@
         <!-- <collision name="o2_col"><pose>3.8 2.1 0.25 0 0 0</pose><geometry><box><size>1.8 0.10 0.5</size></box></geometry></collision>
         <visual    name="o2_vis"><pose>3.8 2.1 0.25 0 0 0</pose><geometry><box><size>1.8 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual> -->
 
-        <collision name="o3_col"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry></collision>
-        <visual    name="o3_vis"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+        <!-- <collision name="o3_col"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry></collision>
+        <visual    name="o3_vis"><pose>2.6 3.2 0.25 0 0 0</pose><geometry><box><size>1.4 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual> -->
 
+        <collision name="o6_col"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>1.5 0.10 0.5</size></box></geometry></collision>
+        <visual    name="o6_vis"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>1.5 0.10 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+    
         <!-- Vertical blocks -->
         <collision name="o4_col"><pose>1.2 2.0 0.25 0 0 0</pose><geometry><box><size>0.10 1.6 0.5</size></box></geometry></collision>
         <visual    name="o4_vis"><pose>1.2 2.0 0.25 0 0 0</pose><geometry><box><size>0.10 1.6 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
@@ -341,12 +344,12 @@
         <collision name="o5_col"><pose>2.4 4.1 0.25 0 0 0</pose><geometry><box><size>0.10 1.7 0.5</size></box></geometry></collision>
         <visual    name="o5_vis"><pose>2.4 4.1 0.25 0 0 0</pose><geometry><box><size>0.10 1.7 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
 
-        <collision name="o6_col"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry></collision>
-        <visual    name="o6_vis"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+        <!-- <collision name="o6_col"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry></collision>
+        <visual    name="o6_vis"><pose>4.6 3.4 0.25 0 0 0</pose><geometry><box><size>0.10 1.5 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual> -->
 
         <!-- A few chunky blocks (to make it “maze-ish”) -->
-        <collision name="o7_col"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry></collision>
-        <visual    name="o7_vis"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
+        <!-- <collision name="o7_col"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry></collision>
+        <visual    name="o7_vis"><pose>3.0 1.3 0.25 0 0 0</pose><geometry><box><size>0.35 0.35 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual> -->
 
         <collision name="o8_col"><pose>0.9 3.7 0.25 0 0 0</pose><geometry><box><size>0.45 0.25 0.5</size></box></geometry></collision>
         <visual    name="o8_vis"><pose>0.9 3.7 0.25 0 0 0</pose><geometry><box><size>0.45 0.25 0.5</size></box></geometry><material><diffuse>0.8 0.8 0.8 1</diffuse></material></visual>
