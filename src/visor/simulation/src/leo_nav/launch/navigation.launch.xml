@@ -107,6 +107,13 @@
       <param from="$(var navigation_params_file)" />
     </composable_node>
 
+    <composable_node name="behavior_server"
+      pkg="nav2_behaviors"
+      plugin="behavior_server::BehaviorServer">
+      <extra_arg name="use_intra_process_comms" value="true" />
+      <param from="$(var navigation_params_file)" />
+    </composable_node>
+
     <composable_node name="lifecycle_manager_navigation"
       pkg="nav2_lifecycle_manager"
       plugin="nav2_lifecycle_manager::LifecycleManager">

@@ -11,7 +11,7 @@ from rclpy.duration import Duration
 
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose
+from nav2_msgs.action import Spin, NavigateToPose
 from nav2_msgs.action import ComputePathToPose
 from action_msgs.msg import GoalStatus
 
@@ -43,7 +43,7 @@ class FrontierExplorer(Node):
         self.declare_parameter("robot_frame", "base_footprint")
 
         # Frontier logic
-        self.declare_parameter("occ_free_max", 40)
+        self.declare_parameter("occ_free_max", 50)
         self.declare_parameter("min_frontier_cells", 8)
         self.declare_parameter("unknown_fraction_stop", 0.03)
 
@@ -66,7 +66,7 @@ class FrontierExplorer(Node):
         self.declare_parameter("tick_period_s", 1.0)
         self.declare_parameter("blacklist_radius_m", 1.5)
 
-        self.declare_parameter("goal_offset_m", 1.0)
+        self.declare_parameter("goal_offset_m", 3.0)
         self.declare_parameter("min_goal_separation_m", 0.6)         # must move at least this
         self.declare_parameter("min_last_goal_separation_m", 0.8)     # avoid same goal repeatedly
         self.declare_parameter("visited_radius_m", 0.8)
