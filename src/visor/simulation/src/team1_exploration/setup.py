@@ -28,6 +28,7 @@ setup(
             'frontier_explorer = team1_exploration.frontier_explorer:main',
             "frontier_low_cost_explorer = team1_exploration.frontier_low_cost_explorer:main",
             'frontier_explorer_random = team1_exploration.frontier_explorer_random:main',
+            'frontier_explorer_wavefront = team1_exploration.frontier_explorer_wavefront:main',
         ],
     },
 )

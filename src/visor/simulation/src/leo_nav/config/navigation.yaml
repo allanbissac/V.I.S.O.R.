@@ -37,7 +37,7 @@ controller_server:
       plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.05
       required_movement_angle: 0.10
-      movement_time_allowance: 5.0
+      movement_time_allowance: 1.0
 
     general_goal_checker:
       stateful: false
