@@ -15,7 +15,7 @@ from pymycobot import MyCobot280  # noqa: E402
 
 import rclpy  # noqa: E402
 from rclpy.node import Node  # noqa: E402
-from std_msgs.msg import String  # noqa: E402
+from std_msgs.msg import String, Bool    # noqa: E402
 from sensor_msgs.msg import JointState  # noqa: E402
 
 from moveit_msgs.srv import GetMotionPlan  # noqa: E402
@@ -110,7 +110,7 @@ class ArmWorker(Node):
         # ---------------- MoveIt (保持第一版命名) ----------------
         self.group_name = "arm"
         self.ee_link = "tcp"
-        self.base_frame = "base_link"  # REP-103: x前 y左 z上
+        self.base_frame = "base_link"  # REP-103: x左 y前 z上
         self.allowed_planning_time = 8.0
         self.num_planning_attempts = 20
         self.max_vel_scale = 0.15
@@ -119,13 +119,16 @@ class ArmWorker(Node):
         # OMPL vs LIN position box
         # Position constraint box
         self.pos_box_m = 0.03
-        self.pos_box_m_lin = 0.001
+        self.pos_box_m_lin = 0.0001
         
         # pick 任务为了避免横向漂移，收紧 pregrasp 与下抓目标容差
         self.pick_pregrasp_box_m = 0.0001
-        self.pick_down_box_m = 0.0001
-        self.place_goal_box_m = 0.003
-        self.place_down_box_m = 0.002
+        self.pick_down_box_m = 0.00001
+        self.place_goal_box_m = 0.0003
+        self.place_down_box_m = 0.0002
+        self.lin_goal_radius_m = 0.0002
+        self.lin_max_vel_scale = 0.08
+        self.lin_max_acc_scale = 0.03
 
         # ---------------- 末端约束：tcp +Y 对齐 base -Z（保持第一版） ----------------
         self.ee_roll_deg = -90.0
@@ -133,7 +136,7 @@ class ArmWorker(Node):
         self.ee_yaw_deg = 0.0
 
         # 允许绕“竖直轴”(tcp 的 Y) 自由转动：放开 about Y
-        self.tilt_tol_rad = 0.15
+        self.tilt_tol_rad = math.radians(3.0)
         self.free_about_y_rad = math.pi
         self.ori_weight = 1.0
 
@@ -143,7 +146,7 @@ class ArmWorker(Node):
         
         # ---------------- Behavior ----------------
         self.pregrasp_offset_mm = 30.0
-        self.pregrasp_wait_sec = 3.0
+        self.pregrasp_wait_sec = 1.5
         self.place_settle_sec = 0.25
 
         # ---------------- Home ----------------
@@ -156,7 +159,7 @@ class ArmWorker(Node):
         # ---------------- Smooth HW exec ----------------
         self.hw_rate_hz = 190.0
         self.hw_time_scale = 0.2
-        self.hw_send_speed = 12
+        self.hw_send_speed = 30
         self.hw_exec_settle_timeout_sec = 1.2
 
         # ---------------- Gripper ----------------
@@ -183,7 +186,7 @@ class ArmWorker(Node):
         self.regrasp_max_rotate_deg = 45.0
         self.regrasp_loop_max_attempts = 3
         # 闭合值接近“边长抓取”时不旋转的容差
-        self.regrasp_edge_no_rotate_tol = 5
+        self.regrasp_edge_no_rotate_tol = 15
         # 兼容旧字段名（历史版本曾使用 *_value 单点触发）
         self.regrasp_trigger_big_value = 79
         self.regrasp_trigger_small_value = 41
@@ -219,10 +222,12 @@ class ArmWorker(Node):
         
         self.sub = self.create_subscription(String, "arm_command", self.command_callback, 10)
         
-        # ================= 移植：✅ 0225新增：创建发布者，用于向发送指令的节点发送报错/超限信息 =================
+        # ================= 移植：0225新增：创建发布者，用于向发送指令的节点发送报错/超限信息 =================
         self.feedback_pub = self.create_publisher(String, "arm_feedback", 10)
         # ====================================================================
-        
+        self.holding_state_pub = self.create_publisher(Bool, "arm_holding_state", 10)
+        self.holding_state_timer = self.create_timer(0.1, self._publish_holding_state)
+
         self.js_pub = self.create_publisher(JointState, "/joint_states", 10)
 
         # joint mapping (MoveIt -> HW)
@@ -297,6 +302,12 @@ class ArmWorker(Node):
     # -----------------------------
     def _is_busy(self) -> bool:
         return self.state in (State.PLAN_EXEC, State.WAIT_PRE, State.HOMING)
+
+    def _publish_holding_state(self):
+        msg = Bool()
+        # self.has_object 标志位在抓取验证、掉落检测中会实时更新
+        msg.data = bool(self.has_object)
+        self.holding_state_pub.publish(msg)
 
     # ====================================================================
     # ================= 移植：✅ 0225新增：坐标范围拦截与反馈器函数 =================
@@ -624,26 +635,10 @@ class ArmWorker(Node):
         
         # ================= 移植：1. 模式合法性统一拦截 =================
         if mode not in ("pick", "place"):
-            self.get_logger().error("❌ 模式必须是 pick 或 place")
+            self.get_logger().error("模式必须是 pick 或 place")
             return
 
         if mode == "pick":
-            # ================= 0311修改：将长短边输入注释掉，恢复直接输入 xyz 坐标 =================
-            '''
-            if len(parts) != 10:
-                self.get_logger().error("格式: pick x1 y1 x2 y2 x3 y3 x4 y4 z")
-                return
-            try:
-                p1 = [float(parts[1]), float(parts[2])]
-                p2 = [float(parts[3]), float(parts[4])]
-                p3 = [float(parts[5]), float(parts[6])]
-                p4 = [float(parts[7]), float(parts[8])]
-                z = float(parts[9])
-            except ValueError:
-                self.get_logger().error("坐标必须是数字")
-                return
-            '''
-            
             # ================= 0311修改：增加正方体大小：big/small =================
             if len(parts) != 5:
                 self.get_logger().error("❌ 0311修改: 格式错误! pick 需要 4 个参数: size x y z (例如: pick big 150 0 20)")
@@ -667,17 +662,7 @@ class ArmWorker(Node):
             OFFSET_Y = 0 
             OFFSET_Z = 0   
             
-            # ================= 0311修改：不再计算四个角点，直接对输入的质心坐标进行补偿 =================
-            '''
-            p1[0] += OFFSET_X; p1[1] += OFFSET_Y
-            p2[0] += OFFSET_X; p2[1] += OFFSET_Y
-            p3[0] += OFFSET_X; p3[1] += OFFSET_Y
-            p4[0] += OFFSET_X; p4[1] += OFFSET_Y
-            z += OFFSET_Z
-            # 1. 算质心
-            cx = (p1[0] + p2[0] + p3[0] + p4[0]) / 4.0
-            cy = (p1[1] + p2[1] + p3[1] + p4[1]) / 4.0
-            '''
+
             cx += OFFSET_X
             cy += OFFSET_Y
             z += OFFSET_Z
@@ -685,32 +670,6 @@ class ArmWorker(Node):
             # ✅ 0225新增：在抓取前，检查经过 OFFSET 补偿后的质心是否超限
             if not self._check_limits_and_feedback(cx, cy, z):
                 return # 如果超限，函数 _check_limits_and_feedback 已经发布了报警消息，这里直接终止任务
-            
-            # ================= 0311修改：不需要进行长短边判断和旋转了，注释掉角度计算 =================
-            '''
-            # 2. 区分长短边并算角度
-            l12 = math.dist(p1, p2)
-            l23 = math.dist(p2, p3)
-            
-            if l12 < l23:
-                angle_rad = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
-            else:
-                angle_rad = math.atan2(p3[1] - p2[1], p3[0] - p2[0])
-                
-            gripper_angle = math.degrees(angle_rad)
-            
-            if gripper_angle > 90:
-                gripper_angle -= 180
-            elif gripper_angle < -90:
-                gripper_angle += 180
-                
-            j6_angle = gripper_angle - 45.0
-            
-            if j6_angle > 180:
-                j6_angle -= 360
-            elif j6_angle < -180:
-                j6_angle += 360
-            '''
             
             # ================= 0311修改：只需要抓取正方体方块，不旋转 =================
             j6_angle = None 
@@ -748,16 +707,7 @@ class ArmWorker(Node):
             except ValueError:
                 self.get_logger().error("❌ 坐标必须是数字")
                 return
-            # ✅  0225新增：纯平移坐标系校正 (Camera XYZ -> Robot XYZ)
-            '''根据实际安装的摄像头位置和机械臂基座位置，进行一个固定的坐标偏移校正。
-            OFFSET_X = 150.0  
-            OFFSET_Y = -200.0 
-            OFFSET_Z = 20.0   
             
-            x += OFFSET_X
-            y += OFFSET_Y
-            z += OFFSET_Z
-            '''
             # ✅ 0225新增：放置指令同样需要检查是否超出机械臂物理界限
             if not self._check_limits_and_feedback(x, y, z):
                 return
@@ -838,12 +788,16 @@ class ArmWorker(Node):
             else:
                 goal_box_m = self.place_goal_box_m
 
-        req = self._build_plan_request_with_start_state(
-            x, y, z,
-            pipeline_id=pipeline_id,
-            planner_id=planner_id,
-            goal_box_m=goal_box_m,
-        )
+        if planner_id == self.pilz_lin_planner_id:
+            req = self._build_lin_plan_request_with_start_state(x, y, z)
+        else:
+            req = self._build_plan_request_with_start_state(
+                x, y, z,
+                pipeline_id=pipeline_id,
+                planner_id=planner_id,
+                goal_box_m=goal_box_m,
+            )
+
         self.plan_cli.call_async(req).add_done_callback(lambda f: self._on_plan_done(f, token))
 
     def _on_plan_done(self, fut, token: int):
@@ -1190,34 +1144,25 @@ class ArmWorker(Node):
     # =========================================================
     # Build plan request（带 start_state + 末端约束 + LIN 时更小 box）
     # =========================================================
-    def _build_plan_request_with_start_state(
+    def _apply_common_plan_request_fields(
         self,
-        x_mm,
-        y_mm,
-        z_mm,
+        mpr: MotionPlanRequest,
         *,
         pipeline_id=None,
         planner_id=None,
-        goal_box_m=None,
-    ) -> GetMotionPlan.Request:
-        pose = PoseStamped()
-        pose.header.frame_id = self.base_frame
-        pose.pose.position.x = x_mm / 1000.0
-        pose.pose.position.y = y_mm / 1000.0
-        pose.pose.position.z = z_mm / 1000.0
-
-        roll = math.radians(self.ee_roll_deg)
-        pitch = math.radians(self.ee_pitch_deg)
-        yaw = math.radians(self.ee_yaw_deg)
-        pose.pose.orientation = quat_from_rpy(roll, pitch, yaw)
-
-        req = GetMotionPlan.Request()
-        mpr = MotionPlanRequest()
+        max_vel_scale=None,
+        max_acc_scale=None,        
+        ) -> None:
         mpr.group_name = self.group_name
         mpr.allowed_planning_time = self.allowed_planning_time
         mpr.num_planning_attempts = self.num_planning_attempts
-        mpr.max_velocity_scaling_factor = self.max_vel_scale
-        mpr.max_acceleration_scaling_factor = self.max_acc_scale
+        mpr.max_velocity_scaling_factor = (
+            self.max_vel_scale if max_vel_scale is None else float(max_vel_scale)
+        )
+        mpr.max_acceleration_scaling_factor = (
+            self.max_acc_scale if max_acc_scale is None else float(max_acc_scale)
+        )
+
 
         if pipeline_id:
             mpr.pipeline_id = str(pipeline_id)
@@ -1230,9 +1175,91 @@ class ArmWorker(Node):
             js = JointState()
             js.name = self.moveit_joint_names
             js.position = self._last_joint_rad_by_moveit
+            # Pilz LIN 明确要求 start_state 速度为 0；这里显式填零，
+            # 避免某些硬件/驱动链路把缺省值解释成非静止起点。
+            js.velocity = [0.0] * len(self.moveit_joint_names)
             js.header.stamp = self.get_clock().now().to_msg()
             rs.joint_state = js
             mpr.start_state = rs
+    def _build_target_pose(self, x_mm, y_mm, z_mm) -> PoseStamped:
+        pose = PoseStamped()
+        pose.header.frame_id = self.base_frame
+        pose.pose.position.x = x_mm / 1000.0
+        pose.pose.position.y = y_mm / 1000.0
+        pose.pose.position.z = z_mm / 1000.0
+
+        roll = math.radians(self.ee_roll_deg)
+        pitch = math.radians(self.ee_pitch_deg)
+        yaw = math.radians(self.ee_yaw_deg)
+        pose.pose.orientation = quat_from_rpy(roll, pitch, yaw)
+        return pose
+
+    def _build_lin_plan_request_with_start_state(self, x_mm, y_mm, z_mm) -> GetMotionPlan.Request:
+        pose = self._build_target_pose(x_mm, y_mm, z_mm)
+
+        req = GetMotionPlan.Request()
+        mpr = MotionPlanRequest()
+        self._apply_common_plan_request_fields(
+            mpr,
+            pipeline_id=self.pilz_pipeline_id,
+            planner_id=self.pilz_lin_planner_id,
+            max_vel_scale=self.lin_max_vel_scale,
+            max_acc_scale=self.lin_max_acc_scale,
+        )
+
+        c = Constraints()
+
+        # Pilz LIN 对“Pose 风格”的目标更稳定；这里改用球形位置容差，
+        # 避免把 OMPL 风格的 box 目标约束直接喂给 LIN 导致系统性失败。
+        pc = PositionConstraint()
+        pc.header.frame_id = self.base_frame
+        pc.link_name = self.ee_link
+
+        sphere = SolidPrimitive()
+        sphere.type = SolidPrimitive.SPHERE
+        sphere.dimensions = [float(self.lin_goal_radius_m)]
+
+        bv = BoundingVolume()
+        bv.primitives.append(sphere)
+        bv.primitive_poses.append(pose.pose)
+        pc.constraint_region = bv
+        pc.weight = 1.0
+
+        oc = OrientationConstraint()
+        oc.header.frame_id = self.base_frame
+        oc.link_name = self.ee_link
+        oc.orientation = pose.pose.orientation
+        oc.absolute_x_axis_tolerance = float(self.tilt_tol_rad)
+        oc.absolute_y_axis_tolerance = float(self.free_about_y_rad)
+        oc.absolute_z_axis_tolerance = float(self.tilt_tol_rad)
+        oc.weight = float(self.ori_weight)
+
+        c.position_constraints.append(pc)
+        c.orientation_constraints.append(oc)
+        mpr.goal_constraints.append(c)
+
+        req.motion_plan_request = mpr
+        return req
+
+    def _build_plan_request_with_start_state(
+        self,
+        x_mm,
+        y_mm,
+        z_mm,
+        *,
+        pipeline_id=None,
+        planner_id=None,
+        goal_box_m=None,
+    ) -> GetMotionPlan.Request:
+        pose = self._build_target_pose(x_mm, y_mm, z_mm)
+
+        req = GetMotionPlan.Request()
+        mpr = MotionPlanRequest()
+        self._apply_common_plan_request_fields(
+            mpr,
+            pipeline_id=pipeline_id,
+            planner_id=planner_id,
+        )
 
         c = Constraints()
 
