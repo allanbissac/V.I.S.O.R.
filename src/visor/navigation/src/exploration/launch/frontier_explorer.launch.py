@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument("use_sim_time", default_value="true"),
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
 
         # Arena bounds (adjust if your map origin differs)
         DeclareLaunchArgument("min_x", default_value="-0.55"),

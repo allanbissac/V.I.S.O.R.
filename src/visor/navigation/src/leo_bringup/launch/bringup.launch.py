@@ -45,19 +45,19 @@ def generate_launch_description():
                               description="Serial port for RPLiDAR"),
     ]
 
-    # ---- 1) Start LiDAR launch ----
-    rplidar_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare("rplidar_ros"),
-                "launch",
-                "rplidar_a2m12_launch.py"
-            ])
-        ),
-        launch_arguments={
-            "serial_port": serial_port
-        }.items()
-    )
+    # # ---- 1) Start LiDAR launch ----
+    # rplidar_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([
+    #             FindPackageShare("rplidar_ros"),
+    #             "launch",
+    #             "rplidar_a2m12_launch.py"
+    #         ])
+    #     ),
+    #     launch_arguments={
+    #         "serial_port": serial_port
+    #     }.items()
+    # )
 
     # ---- 2) Static TF: base_link -> laser (translation only, no rotation) ----
     # tf2_ros supports Euler as: x y z yaw pitch roll frame_id child_frame_id
@@ -89,28 +89,28 @@ def generate_launch_description():
         actions=[nav2_launch]
     )
 
-    # ---- 4) Start Exploration launch with delay ----
-    exploration_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare("exploration"),
-                "launch",
-                "frontier_explorer.launch.py"
-            ])
-        )
-    )
+    # # ---- 4) Start Exploration launch with delay ----
+    # exploration_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(
+    #         PathJoinSubstitution([
+    #             FindPackageShare("exploration"),
+    #             "launch",
+    #             "frontier_explorer.launch.py"
+    #         ])
+    #     )
+    # )
 
-    exploration_delayed = TimerAction(
-        period=explore_delay,
-        actions=[exploration_launch]
-    )
+    # exploration_delayed = TimerAction(
+    #     period=explore_delay,
+    #     actions=[exploration_launch]
+    # )
 
     return LaunchDescription(
         declare_args
         + [
-            rplidar_launch,
+            # rplidar_launch,
             static_tf,
             nav2_delayed,
-            exploration_delayed,
+            # exploration_delayed,
         ]
     )
