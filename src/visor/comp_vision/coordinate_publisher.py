@@ -372,17 +372,14 @@ class VisionPublisherNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = None
     try:
+        rclpy.init(args=args)
         node = VisionPublisherNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    finally:
-        if node is not None:
-            node.destroy_node()
-        rclpy.shutdown()
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":
