@@ -15,8 +15,8 @@ def generate_launch_description():
 
         Node(
             package="team1_exploration",
-            executable="frontier_explorer_random",
-            name="frontier_explorer_random",
+            executable="random_explorer",
+            name="random_explorer",
             output="screen",
             parameters=[
                 {"use_sim_time": LaunchConfiguration("use_sim_time")},
