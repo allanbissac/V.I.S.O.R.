@@ -30,14 +30,14 @@ class ObjectSubscriberNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = ObjectSubscriberNode()
     try:
+        rclpy.init(args=args)
+        node = ObjectSubscriberNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    finally:
-        rclpy.shutdown()
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":
