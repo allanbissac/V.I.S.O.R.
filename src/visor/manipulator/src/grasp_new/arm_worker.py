@@ -146,7 +146,7 @@ class ArmWorker(Node):
         
         # ---------------- Behavior ----------------
         self.pregrasp_offset_mm = 30.0
-        self.pregrasp_wait_sec = 1.5
+        self.pregrasp_wait_sec = 1
         self.place_settle_sec = 0.25
 
         # ---------------- Home ----------------
@@ -401,7 +401,7 @@ class ArmWorker(Node):
         *,
         expect_open: bool,
         retries: int = 3,
-        wait_each: float = 0.9,
+        wait_each: float = 0.5,
         tol: int = 20,
     ) -> bool:
         if not self.mc:
