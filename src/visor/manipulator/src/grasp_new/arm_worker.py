@@ -105,7 +105,7 @@ class ArmWorker(Node):
         self.baud = 1000000
         self.mc = None
 
-        # ---------------- MoveIt (保持第一版命名) ----------------
+        # ---------------- MoveIt----------------
         self.group_name = "arm"
         self.ee_link = "tcp"
         self.base_frame = "base_link"  # REP-103: x左 y前 z上
@@ -198,7 +198,7 @@ class ArmWorker(Node):
         self.gripper_drop_threshold = 10
         self._gripper_monitor_timer = None
 
-        # ================= 移植：✅ 0225新增：定义机械臂 XYZ 坐标的物理极限范围 (单位: mm) =================
+        # ================= 移植：0225新增：定义机械臂 XYZ 坐标的物理极限范围 (单位: mm) =================
         self.limit_x_min, self.limit_x_max = -281.45, 281.45
         self.limit_y_min, self.limit_y_max = -281.45, 281.45
         self.limit_z_min, self.limit_z_max = -70.0, 412.67
@@ -237,11 +237,11 @@ class ArmWorker(Node):
             self.mc = MyCobot280(self.port, self.baud)
             self.mc.power_on()
             time.sleep(0.5)
-            self.get_logger().info(f"机械臂连接成功: {self.port} -> 真机模式")
+            self.get_logger().info(f"Robotic arm connection successful:")
             self._init_gripper()
         except Exception as e:
             self.mc = None
-            self.get_logger().warn(f"未连接真机（{e}），当前节点仅支持真机模式，后续控制指令将被拒绝")
+            self.get_logger().warn(f"Not connected to real device（{e}）.")
 
 
         if self.mc:
@@ -251,7 +251,7 @@ class ArmWorker(Node):
         self.get_logger().info("Waiting for /plan_kinematic_path ...")
         ok = self.plan_cli.wait_for_service(timeout_sec=30.0)
         if not ok:
-            self.get_logger().error("❌ /plan_kinematic_path not available. Is move_group running?")
+            self.get_logger().error("plan_kinematic_path not available. Is move_group running?")
 
         self.timer_tick = self.create_timer(0.02, self._tick)
         self.get_logger().info("ArmWorker ready.")
@@ -296,7 +296,7 @@ class ArmWorker(Node):
 
         msg = String()
         msg.data = (
-            f"pick误差(mm): target=({x_mm:.2f},{y_mm:.2f},{z_mm:.2f}), "
+            f"pick error(mm): target=({x_mm:.2f},{y_mm:.2f},{z_mm:.2f}), "
             f"actual=({ax_mm:.2f},{ay_mm:.2f},{az_mm:.2f}), "
             f"error=({ex:.2f},{ey:.2f},{ez:.2f}), norm={en:.2f}"
         )
@@ -327,25 +327,25 @@ class ArmWorker(Node):
         
         # 检查 X 轴
         if x < self.limit_x_min:
-            errors.append(f"X轴超限(小于下限), 超出了 {self.limit_x_min - x:.2f} mm")
+            errors.append(f"The X-axis is out of range {self.limit_x_min - x:.2f} mm")
         elif x > self.limit_x_max:
-            errors.append(f"X轴超限(大于上限), 超出了 {x - self.limit_x_max:.2f} mm")
-            
+            errors.append(f"The X-axis is out of range {x - self.limit_x_max:.2f} mm")
+
         # 检查 Y 轴
         if y < self.limit_y_min:
-            errors.append(f"Y轴超限(小于下限), 超出了 {self.limit_y_min - y:.2f} mm")
+            errors.append(f"The Y-axis is out of range {self.limit_y_min - y:.2f} mm")
         elif y > self.limit_y_max:
-            errors.append(f"Y轴超限(大于上限), 超出了 {y - self.limit_y_max:.2f} mm")
+            errors.append(f"The Y-axis is out of range {y - self.limit_y_max:.2f} mm")
             
         # 检查 Z 轴
         if z < self.limit_z_min:
-            errors.append(f"Z轴超限(小于下限), 超出了 {self.limit_z_min - z:.2f} mm")
+            errors.append(f"The Z-axis is out of range {self.limit_z_min - z:.2f} mm")
         elif z > self.limit_z_max:
-            errors.append(f"Z轴超限(大于上限), 超出了 {z - self.limit_z_max:.2f} mm")
+            errors.append(f"The Z-axis is out of range {z - self.limit_z_max:.2f} mm")
             
         if errors:
             # 拼接完整的错误信息
-            error_msg = f"❌ 坐标({x:.1f}, {y:.1f}, {z:.1f})不合法: " + "; ".join(errors)
+            error_msg = f"coordinate({x:.1f}, {y:.1f}, {z:.1f}) is invalid: " + "; ".join(errors)
             
             # 在本地终端打印红字报警
             self.get_logger().error(error_msg)
@@ -381,10 +381,10 @@ class ArmWorker(Node):
             if v is None:
                 return
             if v < self.gripper_drop_threshold:
-                self.get_logger().warn(f"🚨 警报：疑似掉落！夹爪值={v} < {self.gripper_drop_threshold}")
+                self.get_logger().warn(f"Drop! Grip value ={v} < {self.gripper_drop_threshold}")
                 self.has_object = False
                 # ================= ✅ 0306新增修改：掉落后自动恢复 =================
-                self.get_logger().warn("🔄 触发掉落保护：立刻张开夹爪并返回 Home 位置...")
+                self.get_logger().warn("The object fell, return to Home...")
                 
                 # 步骤 A：立刻强行张开夹爪，防止夹爪钩拽住半掉落的物体划伤桌面
                 self._gripper_open()
@@ -393,9 +393,9 @@ class ArmWorker(Node):
                 # 步骤 C：调用回零函数，让机械臂安全退回全部为 0 度的初始姿态
                 self._enter_home()
                 
-                self.get_logger().warn("🔄 has_object=False，等待下一条指令（或重新 pick）")
+                self.get_logger().warn("has_object=False Waiting for the next instruction (or to pick again).")
         except Exception as e:
-            self.get_logger().error(f"掉落监测读取失败: {e}")
+            self.get_logger().error(f"Fall detection failed to read: {e}")
 
     # =========================================================
     # 夹爪：设置并验证 + 重试
@@ -456,12 +456,12 @@ class ArmWorker(Node):
             tol=self.gripper_verify_tol,
         )
         if not ok:
-            self.get_logger().warn("⚠️ 初始化夹爪张开未确认成功（建议检查通信/固件）")
+            self.get_logger().warn("Failed to initialize gripper open state")
         self.has_object = False
     
     def _gripper_open(self) -> bool:       
         if not self.mc:
-            self.get_logger().error("真机未连接，无法控制夹爪")
+            self.get_logger().error("Real device connection failed")
             return False
 
 
@@ -477,7 +477,7 @@ class ArmWorker(Node):
 
     def _gripper_close(self) -> bool:
         if not self.mc:
-            self.get_logger().error("真机未连接，无法控制夹爪")
+            self.get_logger().error("Real device connection failed")
             return False
 
 
@@ -495,7 +495,7 @@ class ArmWorker(Node):
     #=====================================================
     def _verify_grasp_now(self) -> bool:
         if not self.mc:
-            self.get_logger().error("真机未连接，无法验证抓取")
+            self.get_logger().error("Real device connection failed")
             return False
 
 
@@ -504,15 +504,15 @@ class ArmWorker(Node):
         try:
             v = self.mc.get_gripper_value()
         except Exception as e:
-            self.get_logger().warn(f"抓取判定：读取夹爪失败({e}) -> 按失败处理")
+            self.get_logger().warn(f"Grasp verification: Failed to read gripper value ({e}) -> Handle as failure")
             return False
 
         if v is None:
-            self.get_logger().warn("抓取判定：夹爪值 None -> 按失败处理")
+            self.get_logger().warn("Grasp verification: Gripper value is None -> Handle as failure")
             return False
 
         if v <= int(self.grasp_success_min_value):
-            self.get_logger().warn(f"❌ 抓取失败：夹爪值={v} <= {self.grasp_success_min_value}（疑似空夹）")
+            self.get_logger().warn(f"Grasp verification: Gripper value ={v} <= {self.grasp_success_min_value} -> Handle as failure")
             return False
         return True
 
@@ -561,7 +561,7 @@ class ArmWorker(Node):
     def command_callback(self, msg: String):
         s = msg.data.strip()
         cmd = s.lower()
-        self.get_logger().info(f"收到指令: {s}")
+        self.get_logger().info(f"Received command: {s}")
 
         if cmd == "home":
             self._queue.clear()
@@ -577,18 +577,18 @@ class ArmWorker(Node):
         
         # ================= 移植：1. 模式合法性统一拦截 =================
         if mode not in ("pick", "place"):
-            self.get_logger().error("模式必须是 pick 或 place")
+            self.get_logger().error("Mode must be pick or place")
             return
 
         if mode == "pick":
             # ================= 0311修改：增加正方体大小：big/small =================
             if len(parts) != 5:
-                self.get_logger().error("❌ 0311修改: 格式错误! pick 需要 4 个参数: size x y z (例如: pick big 150 0 20)")
+                self.get_logger().error("Format error! pick requires 4 parameters: size x y z")
                 return
             
             size_str = parts[1].lower()
             if size_str not in ("big", "small"):
-                self.get_logger().error("❌ 0311修改: 正方体大小必须是 big 或 small")
+                self.get_logger().error("Cube size must be big or small")
                 return
 
             try:
@@ -597,7 +597,7 @@ class ArmWorker(Node):
                 z = float(parts[4])
             # =======================================================================
             except ValueError:
-                self.get_logger().error("坐标必须是数字")
+                self.get_logger().error("Coordinates must be numbers")
                 return
 
             OFFSET_X = 0.0  
@@ -636,7 +636,7 @@ class ArmWorker(Node):
         # ================= 移植：新增：独立的 place 逻辑(目前不补偿相机偏置，为机械臂坐标系) =================
         elif mode == "place":
             if len(parts) != 4:
-                self.get_logger().error("❌ 格式错误! place 需要 3 个数值: x y z")
+                self.get_logger().error("Format error! place requires 3 parameters: x y z")
                 return
                 
             try:
@@ -644,7 +644,7 @@ class ArmWorker(Node):
                 y = float(parts[2])
                 z = float(parts[3])
             except ValueError:
-                self.get_logger().error("❌ 坐标必须是数字")
+                self.get_logger().error("Coordinates must be numbers")
                 return
             
             # ✅ 0225新增：放置指令同样需要检查是否超出机械臂物理界限
@@ -672,10 +672,10 @@ class ArmWorker(Node):
         t = item
 
         if t.mode == "pick" and self.has_object:
-            self.get_logger().warn("手里已有物体，忽略 pick")
+            self.get_logger().warn("object already exists, ignore the pick function")
             return
         if t.mode == "place" and (not self.has_object):
-            self.get_logger().warn("手里没东西，忽略 place")
+            self.get_logger().warn("nothing in manipulator, so ignore place.")
             return
 
         pre_z = t.z + self.pregrasp_offset_mm
@@ -752,9 +752,6 @@ class ArmWorker(Node):
         if code != MoveItErrorCodes.SUCCESS:
             if self._task and self._task.mode == "place" and self._step_idx == 1 and (not self._place_step1_fallback_used):
                 self._place_step1_fallback_used = True
-                self.get_logger().warn(
-                    f"place step1 使用 LIN 规划失败: {moveit_error_to_str(code)} ({code})，改用 OMPL 回退重试一次"
-                )
                 self.state = State.IDLE
                 self._start_step()
                 return
@@ -808,14 +805,9 @@ class ArmWorker(Node):
                             rotate_deg = self._compute_regrasp_rotate_deg(self._task.size, vi)
                             if rotate_deg <= 0.0:
                                 break
-
-                            self.get_logger().warn(
-                                f"第{i+1}次二次抓取: 闭合值={vi}，先最大张开再旋转{rotate_deg:.1f}°"
-                            )
                             # 先最大张开（确认到位）再旋转
                             opened = self._gripper_open_fully_before_regrasp()
                             if not opened:
-                                self.get_logger().warn("二次抓取：夹爪未充分张开，跳过本次旋转以避免带动物体")
                                 continue
 
                             curr_angles = self.mc.get_angles()
@@ -825,7 +817,7 @@ class ArmWorker(Node):
                             self._gripper_close()
                     except Exception as e:
 
-                        self.get_logger().error(f"二次抓取触发流程失败: {e}")
+                        self.get_logger().error(f"Second fetch failed: {e}")
 
                 ok = self._verify_grasp_now()
                 self.has_object = bool(ok)
@@ -836,7 +828,7 @@ class ArmWorker(Node):
                     return
 
                 # 失败：从 home 重试一次（保留第二版 E）
-                self.get_logger().warn("抓取失败：将从 Home 重新尝试同一抓取点（1 次）")
+                self.get_logger().warn("Fetch failed, re-fetch from Home.")
 
                 # 失败时务必开爪（保证下一轮从 home 开始夹爪张开）
                 self._gripper_open()
@@ -872,7 +864,7 @@ class ArmWorker(Node):
                     self._queue.insert(0, retry_task)
                     return
 
-                self.get_logger().warn("❌ 抓取失败且无重试次数，回 Home 等待下一条指令")
+                self.get_logger().warn("Fetch failed and no retries left, returning to Home to wait for the next command")
                 self._enter_home()
                 return
 
@@ -972,10 +964,10 @@ class ArmWorker(Node):
         self._step_idx = 0
 
         if not self.mc:
-            self.get_logger().error("真机未连接，无法回 Home")
+            self.get_logger().error("Real device connection failed")
             self.state = State.IDLE
             return
-        self.get_logger().info("🏠 (HW) 回到 Home ...")
+        self.get_logger().info("back Home ...")
         try:
             self.mc.send_angles(self.home_angles_deg, self.home_speed)
         except Exception as e:
@@ -1000,8 +992,8 @@ class ArmWorker(Node):
     
     def _handle_runtime_error(self, reason: str):
         # 先保留并打印具体错误原因，再执行安全回 Home
-        self.get_logger().error(f"运行错误原因：{reason}")
-        self.get_logger().warn("检测到运行错误：立即回 Home，并等待下一条 pick/place 指令")
+        self.get_logger().error(f"Runtime error reason: {reason}")
+        self.get_logger().warn("Runtime error detected: returning to Home and waiting for the next pick/place command")
         self._queue.clear()
         self._enter_home()
 
@@ -1178,7 +1170,7 @@ class ArmWorker(Node):
     # =========================================================
     def _exec_hw_smooth_interpolated(self, traj: JointTrajectory) -> bool:
         if self.moveit_joint_names is None:
-            self.get_logger().error("moveit_joint_names 未初始化，无法执行")
+            self.get_logger().error("moveit_joint_names Uninitialized, cannot be executed")
             return False
 
         name_to_idx = {n: i for i, n in enumerate(traj.joint_names)}
